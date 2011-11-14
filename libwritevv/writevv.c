@@ -5,6 +5,15 @@
 #include <sys/types.h>
 #include <sys/sysctl.h>
 
+#include <stdio.h>
+#include <stdlib.h>
+
+#include <strings.h>
+
+
+
+#define _LIBWRITEVV 1
+
 #include "writevv.h"
 
 
@@ -12,15 +21,17 @@
 static int
 getsyscallbyname(const char *syscallname, int *syscallnum)
 {
-	int error, saved_errno;
+	int error;
+	size_t numsize;
 	char *mibname;
+
+	numsize = sizeof(*syscallnum);
 
 	error = asprintf(&mibname, "kern.syscall.%s", syscallname);
 	if (error == -1)
 		return -1;
-	error = sysctlbyname(mibname, syscallnum, sizeof(*syscallnum),
-	    NULL, 0);
-	free(node);
+	error = sysctlbyname(mibname, syscallnum, &numsize, NULL, 0);
+	free(mibname);
 	return (error);
 }
 
@@ -31,10 +42,9 @@ getsyscallbyname(const char *syscallname, int *syscallnum)
 static int
 initsyscallvar(const char *syscallname, SYSCALLVAR *syscallnum)
 {
-	int newsyscall;
+	int newsyscall, error;
 
 	if (*syscallnum == NO_SYSCALL) {
-		int newsyscall;
 		error = getsyscallbyname(syscallname, &newsyscall);
 		if (error == -1)
 			return error;
@@ -58,6 +68,7 @@ writevv(const int *fds, int fdcnt, const struct iovec *iov, int iovcnt,
     size_t *returns, int *errors)
 {
 	struct writevv_args args;
+	int error;
 
 	error = initsyscallvar("writevv", &writevv_syscall);
 	if (error != 0)
