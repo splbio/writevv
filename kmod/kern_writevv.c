@@ -173,7 +173,13 @@ writevv_kernel(struct thread *td, int fd, struct uio *uio,
 
 	/* Handle non-sockets by just calling kernel write routine. */
 	if (fp->f_type != DTYPE_SOCKET) {
-		error = kern_writev(td, fd, uio);
+		struct uio copied_uio;
+		
+		/* make a copy of the uio so that kern_writev does not change
+		 * our caller's uio
+		 */
+		copied_uio = *uio;
+		error = kern_writev(td, fd, &copied_uio);
 		goto out;
 	}
 
