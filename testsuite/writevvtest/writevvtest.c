@@ -81,7 +81,8 @@ main(int argc __unused, char **argv __unused)
 	    totvecbytes += sizeof(buff);
     }
 
-    opt = WRITEVV_MODE_USER;
+    //opt = WRITEVV_MODE_USER;
+    opt = WRITEVV_MODE_KERNEL;
     writevv_control(WRITEVV_SETMODE, &opt);
 
     for (i = 0; i < 10; i++) {
@@ -93,7 +94,7 @@ main(int argc __unused, char **argv __unused)
 	for (k = 0; k < NCONN; k++) {
 		size_t r = returns[k];
 		if (r != totvecbytes) {
-			fprintf(stderr, "r = %d, totvecbytes = %d\n", (int)r, (int)totvecbytes);
+			fprintf(stderr, "failed: fd %d (index %d of %d) -> r = %zu, totvecbytes = %zu\n", fds[k], k, NCONN, r, totvecbytes);
 			exit(1);
 		}
 	}
