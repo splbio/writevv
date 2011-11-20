@@ -6,7 +6,10 @@ SUBDIR = libwritevv \
 	testsuite 
 
 reload:
-	-kldunload writevv
+	sudo $(MAKE) $(MAKEFLAGS) rootreload
+
+rootreload:
+	kldunload writevv
 	kldload ./kmod/writevv.ko
 
 runsink:
