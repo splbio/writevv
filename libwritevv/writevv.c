@@ -120,7 +120,7 @@ writevv_kernel(const int *fds, int fdcnt, const struct iovec *iov, int iovcnt,
 	args.iovcnt = iovcnt;
 	args.returns = returns;
 	args.errors = errors;
-	return syscall(getsyscallnum(&writevv_syscall), args);
+	return __syscall(getsyscallnum(&writevv_syscall), &args);
 }
 
 int
