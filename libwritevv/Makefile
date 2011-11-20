@@ -1,5 +1,5 @@
 # 
-LIB=	libwritevv
+LIB=	writevv
 SRCS=	writevv.c
 
 INCS=	writevv.h
