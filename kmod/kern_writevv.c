@@ -141,7 +141,7 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg) // void *argp)
     auio = NULL;
     m = NULL;
 
-    printf("user arg struct @ %p\n", argp);
+    /* printf("user arg struct @ %p\n", argp); */
     error = copyin(argp, &arg, sizeof(arg));
     if (error) {
             printf("copyin() failed: %d\n", error);
@@ -182,6 +182,12 @@ writevv_kernel(struct thread *td, int fd, struct uio *uio,
 	struct socket *so;
 	int error;
 	struct mbuf *m2;
+	int sblocked;
+	int space;
+
+	so = NULL;
+	sblocked = 0;
+	m2 = NULL;
 
 	/* refcount the struct file. */
 	error = fget_write(td, fd, CAP_WRITE | CAP_SEEK, &fp);
@@ -189,7 +195,7 @@ writevv_kernel(struct thread *td, int fd, struct uio *uio,
 		return error;
 
 	/* Handle non-sockets by just calling kernel write routine. */
-	if (1 || fp->f_type != DTYPE_SOCKET) {
+	if (fp->f_type != DTYPE_SOCKET) {
 		struct uio *temp_uio;
 		
 		/* make a copy of the uio so that kern_writev does not change
@@ -209,23 +215,69 @@ writevv_kernel(struct thread *td, int fd, struct uio *uio,
 	}
 
 	so = (struct socket *)fp->f_data;
+	error = sblock(&so->so_snd, SBL_WAIT);
+	if (error)
+		goto out;
+	sblocked = 1;
+
 	SOCKBUF_LOCK(&so->so_snd);
+	if (so->so_snd.sb_lowat < so->so_snd.sb_hiwat / 2)
+		so->so_snd.sb_lowat = so->so_snd.sb_hiwat / 2;
+retry_space:
 	if (so->so_snd.sb_state & SBS_CANTSENDMORE) {
 		error = EPIPE;
 		SOCKBUF_UNLOCK(&so->so_snd);
 		goto out;
+	} else if (so->so_error) {
+		error = so->so_error;
+		so->so_error = 0;
+		SOCKBUF_UNLOCK(&so->so_snd);
+		goto out;
+	}
+	space = sbspace(&so->so_snd);
+	if (space < uio->uio_resid &&
+	    (space <= 0 ||
+	     space < so->so_snd.sb_lowat)) {
+		if (so->so_state & SS_NBIO) {
+			SOCKBUF_UNLOCK(&so->so_snd);
+			error = EAGAIN;
+			goto out;
+		}
+		/*
+		 * sbwait drops the lock while sleeping.
+		 * When we loop back to retry_space the
+		 * state may have changed and we retest
+		 * for it.
+		 */
+		error = sbwait(&so->so_snd);
+		/*
+		 * An error from sbwait usually indicates that we've
+		 * been interrupted by a signal. If we've sent anything
+		 * then return bytes sent, otherwise return the error.
+		 */
+		if (error) {
+			SOCKBUF_UNLOCK(&so->so_snd);
+			goto out;
+		}
+		goto retry_space;
 	}
 	SOCKBUF_UNLOCK(&so->so_snd);
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_send)
-	    (so, 0, m, NULL, NULL, td);
+	    (so, 0, m2, NULL, NULL, td);
+	m2 = NULL; /* it's consumed by the pru_send routine */
+	td->td_retval[0] = uio->uio_resid;
 	CURVNET_RESTORE();
-        if (error == EPIPE && (so->so_options & SO_NOSIGPIPE) == 0) {
-                PROC_LOCK(uio->uio_td->td_proc);
-                tdsignal(uio->uio_td, SIGPIPE);
-                PROC_UNLOCK(uio->uio_td->td_proc);
-        }
+	if (error == EPIPE && (so->so_options & SO_NOSIGPIPE) == 0) {
+		PROC_LOCK(uio->uio_td->td_proc);
+		tdsignal(uio->uio_td, SIGPIPE);
+		PROC_UNLOCK(uio->uio_td->td_proc);
+	}
 out:
+	if (so && sblocked) {
+		sbunlock(&so->so_snd);
+	}
+	m_freem(m2);
 	fdrop(fp, td);
 	return (error);
 }
