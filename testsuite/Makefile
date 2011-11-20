@@ -1,9 +1,7 @@
 
 .include <bsd.own.mk>
 
-SUBDIR = libwritevv \
-	kmod \
-	testsuite 
+SUBDIR = sink
 
 .include <bsd.subdir.mk>
 
