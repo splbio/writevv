@@ -62,8 +62,12 @@ __FBSDID("$FreeBSD$");
 #include "writevv.h"
 
 
+struct kern_writevv_args {
+	struct writevv_args *wargs;
+};
+static int sys_writevv(struct thread *td, struct kern_writevv_args *karg); // void *argp)
 /*static int writevv_mod_event(module_t mod, int event, void *data);*/
-static int sys_writevv(struct thread *td, void *argp);
+//static int sys_writevv(struct thread *td, void *argp);
 static int writevv_internal_user(struct thread *td,
     const int *user_fds, int fdcnt,
     struct uio *auio, struct mbuf *m, size_t *user_returns, int *user_errors);
@@ -82,7 +86,7 @@ DECLARE_MODULE(writevv, writevv_mod, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
 
 struct sysent writevv_sysent = {
 	.sy_narg = sizeof(void *) / sizeof(register_t),
-	.sy_call = sys_writevv,
+	.sy_call = (sy_call_t *)sys_writevv,
 };
 static int writevv_syscall = NO_SYSCALL;
 
@@ -126,26 +130,38 @@ writevv_mod_event(module_t mod, int event, void *data)
 #endif
 
 static int
-sys_writevv(struct thread *td, void *argp)
+sys_writevv(struct thread *td, struct kern_writevv_args *karg) // void *argp)
 {
+    struct writevv_args *argp = karg->wargs;
     struct writevv_args arg;
-    struct uio *auio;
+    struct uio *auio, *temp_uio;
     struct mbuf *m;
     int error;
 
     auio = NULL;
     m = NULL;
 
+    printf("user arg struct @ %p\n", argp);
     error = copyin(argp, &arg, sizeof(arg));
-    if (error)
+    if (error) {
+            printf("copyin() failed: %d\n", error);
 	    return error;
+    }
 
     error = copyinuio(arg.iov, arg.iovcnt, &auio);
-    if (error)
+    if (error) {
+            printf("copyinuio() failed: %d\n", error);
 	    return error;
-
-    m = m_uiotombuf(auio, M_WAIT, 0, 0, 0);
+    }
+    auio->uio_rw = UIO_WRITE;
+    auio->uio_td = td;
+    auio->uio_offset = (off_t)-1;
+    /* m_uiotombuf consumes the uio and iovs, so pass a temp copy */
+    temp_uio = cloneuio(auio);
+    m = m_uiotombuf(temp_uio, M_WAIT, 0, 0, 0);
+    free(temp_uio, M_IOV);
     if (m == NULL) {
+            printf("m_uiotombuf() failed NULL\n");
 	    error = ENOBUFS;
 	    goto out;
     }
@@ -153,6 +169,7 @@ sys_writevv(struct thread *td, void *argp)
     error = writevv_internal_user(td, arg.fds, arg.fdcnt, auio, m,
 	arg.returns, arg.errors);
 out:
+    m_freem(m);
     free(auio, M_IOV);
     return (error);
 }
@@ -172,21 +189,24 @@ writevv_kernel(struct thread *td, int fd, struct uio *uio,
 		return error;
 
 	/* Handle non-sockets by just calling kernel write routine. */
-	if (fp->f_type != DTYPE_SOCKET) {
-		struct uio copied_uio;
+	if (1 || fp->f_type != DTYPE_SOCKET) {
+		struct uio *temp_uio;
 		
 		/* make a copy of the uio so that kern_writev does not change
 		 * our caller's uio
 		 */
-		copied_uio = *uio;
-		error = kern_writev(td, fd, &copied_uio);
+		temp_uio = cloneuio(uio);
+		error = kern_writev(td, fd, temp_uio);
+		free(temp_uio, M_IOV);
 		goto out;
 	}
 
 	/* copy our mbuf chain. */
 	m2 = m_copym(m, 0, M_COPYALL, M_WAITOK);
-	if (m2 == NULL)
+	if (m2 == NULL) {
+		error = ENOBUFS;
 		goto out;
+	}
 
 	so = (struct socket *)fp->f_data;
 	SOCKBUF_LOCK(&so->so_snd);
@@ -227,7 +247,7 @@ writevv_internal_user(struct thread *td,
     int error;
     int fds[BATCH_SIZE];
     int errors[BATCH_SIZE];
-    int returns[BATCH_SIZE];
+    size_t returns[BATCH_SIZE];
     int i;
 
     fdoffset = 0;
@@ -241,17 +261,29 @@ writevv_internal_user(struct thread *td,
 	    for (i = 0; i < toprocess; i++) {
 		    error = errors[i] = writevv_kernel(td, fds[i], auio, m);
 		    returns[i] = td->td_retval[0];
+		    /*
+		    printf("writevv_kernel: data sent: %lu\n",
+			(unsigned long)returns[i]);
+			*/
 	    }
-	    error = copyout(errors, user_errors,
+	    error = copyout(errors, user_errors + fdoffset,
 		toprocess * sizeof(*errors));
-	    if (error)
+	    if (error) {
+                    printf("writevv_internal_user: copyout failed (errors). uaddr %p, len %d, error %d\n",
+                        user_errors, (int)(toprocess * sizeof(*errors)), error);
 		    goto out;
-	    error = copyout(returns, user_returns,
+            }
+	    error = copyout(returns, user_returns + fdoffset,
 		toprocess * sizeof(*returns));
-	    if (error)
+	    if (error) {
+                    printf("writevv_internal_user: copyout failed (returns). uaddr %p, len %d, error %d\n",
+                        user_returns, (int)(toprocess * sizeof(*returns)), error);
 		    goto out;
+            }
 	    fdoffset += BATCH_SIZE;
+	    //printf("writevv_kernel: fdoffset: %d, fdcnt: %d\n", fdoffset, fdcnt);
     }
 out:
+    //printf("writevv_internal_user: error: %d\n", error);
     return (error);
 }
