@@ -28,7 +28,7 @@
 
 #define SOCK_BUF_SIZE (64*1024)
 #define IOVCNT	4
-char buff[(SOCK_BUF_SIZE / IOVCNT) - 50];
+char buff[((SOCK_BUF_SIZE / IOVCNT)/4) - 50];
 
 
 int make_conn(void);
