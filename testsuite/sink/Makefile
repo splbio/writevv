@@ -6,6 +6,7 @@ LDFLAGS+= -L/usr/local/lib/event2 -levent
 #/usr/local/lib/event2/libevent.a 
 #-levent2 
 
+WARNS=6
 NO_MAN=1
 
 .include <bsd.prog.mk>

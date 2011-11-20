@@ -17,7 +17,7 @@
 #include <arpa/inet.h>
 
 
-#if 1
+#if 0
 #define e()	do {fprintf(stderr, "%d\n", __LINE__); } while (0)
 #else
 #define e()	do { ; }while(0)
@@ -31,15 +31,17 @@ struct cb_arg {
 };
 
 long long sunk_total, sunk_last_print;
-#define PRINT_PROGRESS 8
+#define PRINT_PROGRESS (1024*1024*32)
 
 char buf[1024 * 1024 * 32];
 
+void read_socket_cb(evutil_socket_t fd, short what, void *arg);
+void listen_socket_cb(evutil_socket_t fd, short what, void *arg);
+
 void
-read_socket_cb(evutil_socket_t fd, short what, void *arg)
+read_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
 {
     struct cb_arg *cb_arg = arg;
-    struct event *ev;
     int error;
 
     e();
@@ -72,7 +74,7 @@ read_socket_cb(evutil_socket_t fd, short what, void *arg)
 
 
 void
-listen_socket_cb(evutil_socket_t fd, short what, void *arg)
+listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
 {
     struct cb_arg *cb_arg;
     struct event_base *base;
@@ -110,11 +112,11 @@ listen_socket_cb(evutil_socket_t fd, short what, void *arg)
 }
 
 int
-main(int argc, char **argv)
+main(int argc __unused, char **argv __unused)
 {
     struct event_config *cfg;
     struct event_base *base;
-    struct  protoent *protoent;
+    //struct  protoent *protoent;
     struct sockaddr_in my_addr;
     struct cb_arg *new_arg;
     struct event *ev;
