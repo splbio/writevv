@@ -4,7 +4,7 @@ SRCS=	writevv.c
 
 INCS=	writevv.h
 
-WARNS=	4
+WARNS=	6
 SHLIBDIR?= /usr/local/lib
 
 .include <bsd.lib.mk>
