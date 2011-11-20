@@ -9,7 +9,7 @@ reload:
 	sudo $(MAKE) $(MAKEFLAGS) rootreload
 
 rootreload:
-	kldunload writevv
+	-kldunload writevv
 	kldload ./kmod/writevv.ko
 
 runsink:
