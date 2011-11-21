@@ -28,7 +28,6 @@
 #include <sys/cdefs.h>
 __FBSDID("$FreeBSD$");
 
-
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/mbuf.h>
@@ -53,11 +52,12 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/socket.h>
 #include <sys/socketvar.h>
+#include <sys/uio.h>
 
 #include <net/vnet.h>
 
+#include <machine/stdarg.h>
 
-#include <sys/uio.h>
 
 #include "writevv.h"
 
@@ -65,30 +65,19 @@ __FBSDID("$FreeBSD$");
 struct kern_writevv_args {
 	struct writevv_args *wargs;
 };
-static int sys_writevv(struct thread *td, struct kern_writevv_args *karg); // void *argp)
-/*static int writevv_mod_event(module_t mod, int event, void *data);*/
-//static int sys_writevv(struct thread *td, void *argp);
+static int sys_writevv(struct thread *td, struct kern_writevv_args *karg);
 static int writevv_internal_user(struct thread *td,
     const int *user_fds, int fdcnt,
-    struct uio *auio, struct mbuf *m, size_t *user_returns, int *user_errors);
-
-#if 0
-static moduledata_t writevv_mod = {
-	"writevv",
-	writevv_mod_event,
-	NULL
-};
-
-DECLARE_MODULE(writevv, writevv_mod, SI_SUB_DRIVERS, SI_ORDER_MIDDLE);
-#endif
-
-
+    struct uio *auio, struct mbuf *m,
+    size_t *user_returns, int *user_errors);
 
 struct sysent writevv_sysent = {
 	.sy_narg = sizeof(void *) / sizeof(register_t),
 	.sy_call = (sy_call_t *)sys_writevv,
 };
 static int writevv_syscall = NO_SYSCALL;
+
+static int writevv_debug = 0;
 
 struct sysent oldsysent;
 
@@ -98,39 +87,28 @@ SYSCTL_INT(_kern_syscall, OID_AUTO, writevv, CTLFLAG_RD,
 
 SYSCALL_MODULE(writevv, &writevv_syscall, &writevv_sysent, NULL, NULL);
 
-#if 0
-static int
-writevv_mod_event(module_t mod, int event, void *data)
+SYSCTL_NODE(_debug, OID_AUTO, writevv, CTLFLAG_RD, 0, "writevv");
+SYSCTL_INT(_debug_writevv, OID_AUTO, debug, CTLFLAG_RW, &writevv_debug,
+    0, "debug output level"); 
+
+static void dbg(int level, const char *fmt, ...) __printflike(2, 3);
+
+static void
+dbg(int level, const char *fmt, ...)
 {
-        int error;
+        va_list ap;
 
-	error = 0;
+	if (writevv_debug < level)
+		return;
 
-        switch (event) {
-        case MOD_LOAD:
-/*		error = syscall_register(&writevv_syscall, &writevv_sysent,
-		    &oldsysent);
-		    */
-		break;
-
-        case MOD_UNLOAD:
-		/*error = syscall_deregister(&writevv_syscall, &oldsysent); */
-                break;
-
-        case MOD_SHUTDOWN:
-                break;
-
-        default:
-                error = EOPNOTSUPP;
-                break;
-        }
-
-        return (error);
+        va_start(ap, fmt);
+        (void)vprintf(fmt, ap);
+        va_end(ap);
 }
-#endif
+
 
 static int
-sys_writevv(struct thread *td, struct kern_writevv_args *karg) // void *argp)
+sys_writevv(struct thread *td, struct kern_writevv_args *karg)
 {
     struct writevv_args *argp = karg->wargs;
     struct writevv_args arg;
@@ -141,16 +119,16 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg) // void *argp)
     auio = NULL;
     m = NULL;
 
-    /* printf("user arg struct @ %p\n", argp); */
+    dbg(1, "user arg struct @ %p\n", argp);
     error = copyin(argp, &arg, sizeof(arg));
     if (error) {
-            printf("copyin() failed: %d\n", error);
+            dbg(1, "copyin() failed: %d\n", error);
 	    return error;
     }
 
     error = copyinuio(arg.iov, arg.iovcnt, &auio);
     if (error) {
-            printf("copyinuio() failed: %d\n", error);
+            dbg(1, "copyinuio() failed: %d\n", error);
 	    return error;
     }
     auio->uio_rw = UIO_WRITE;
@@ -161,7 +139,7 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg) // void *argp)
     m = m_uiotombuf(temp_uio, M_WAIT, 0, 0, 0);
     free(temp_uio, M_IOV);
     if (m == NULL) {
-            printf("m_uiotombuf() failed NULL\n");
+            dbg(1, "m_uiotombuf() failed NULL\n");
 	    error = ENOBUFS;
 	    goto out;
     }
@@ -313,29 +291,26 @@ writevv_internal_user(struct thread *td,
 	    for (i = 0; i < toprocess; i++) {
 		    error = errors[i] = writevv_kernel(td, fds[i], auio, m);
 		    returns[i] = td->td_retval[0];
-		    /*
-		    printf("writevv_kernel: data sent: %lu\n",
+		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
-			*/
 	    }
 	    error = copyout(errors, user_errors + fdoffset,
 		toprocess * sizeof(*errors));
 	    if (error) {
-                    printf("writevv_internal_user: copyout failed (errors). uaddr %p, len %d, error %d\n",
+                    dbg(1, "writevv_internal_user: copyout failed (errors). uaddr %p, len %d, error %d\n",
                         user_errors, (int)(toprocess * sizeof(*errors)), error);
 		    goto out;
             }
 	    error = copyout(returns, user_returns + fdoffset,
 		toprocess * sizeof(*returns));
 	    if (error) {
-                    printf("writevv_internal_user: copyout failed (returns). uaddr %p, len %d, error %d\n",
+                    dbg(1, "writevv_internal_user: copyout failed (returns). uaddr %p, len %d, error %d\n",
                         user_returns, (int)(toprocess * sizeof(*returns)), error);
 		    goto out;
             }
 	    fdoffset += BATCH_SIZE;
-	    //printf("writevv_kernel: fdoffset: %d, fdcnt: %d\n", fdoffset, fdcnt);
     }
 out:
-    //printf("writevv_internal_user: error: %d\n", error);
+    dbg(1, "writevv_internal_user: error: %d\n", error);
     return (error);
 }
