@@ -8,7 +8,7 @@ SUBDIR = libwritevv \
 reload:
 	sudo $(MAKE) $(MAKEFLAGS) rootreload
 
-rootreload:
+rootreload: tunekernel
 	-kldunload writevv
 	kldload ./kmod/writevv.ko
 
@@ -17,6 +17,9 @@ runsink:
 
 runtest:
 	./testsuite/writevvtest/writevvtest
+
+tunekernel:
+	sudo sysctl kern.ipc.somaxconn=8192
 
 .include <bsd.subdir.mk>
 

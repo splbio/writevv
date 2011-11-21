@@ -10,6 +10,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <err.h>
@@ -20,7 +21,7 @@
 #include "writevv.h"
 
 
-#if 1
+#if 0
 #define e()	do {fprintf(stderr, "%d\n", __LINE__); } while (0)
 #else
 #define e()	do { ; }while(0)
@@ -28,8 +29,15 @@
 
 #define SOCK_BUF_SIZE (64*1024)
 #define IOVCNT	4
-char buff[((SOCK_BUF_SIZE / IOVCNT)/4) - 50];
+static int g_mode = WRITEVV_MODE_KERNEL;
+int g_children = 1;
+int g_sockbufsize = SOCK_BUF_SIZE;
+int g_bufsize = (((SOCK_BUF_SIZE / IOVCNT)/4) - 50);
+int g_loops = 10;
+int g_port = 9999;
+int g_sockcnt = 1000;
 
+char *g_buff;
 
 int make_conn(void);
 
@@ -43,58 +51,113 @@ make_conn(void)
     s = socket(PF_INET, SOCK_STREAM, 0); //protoent->p_proto);
     bzero(&my_addr, sizeof(my_addr));
     my_addr.sin_family = AF_INET;
-    my_addr.sin_port = htons(9999);     // short, network byte order
+    my_addr.sin_port = htons(g_port);     // short, network byte order
     my_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     e();
     error = connect(s, (struct sockaddr *)&my_addr, sizeof(my_addr));
     if (error == -1)
 	    err(1, "connect");
-    opt = SOCK_BUF_SIZE;
+    opt = g_sockbufsize;
     setsockopt(s, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
     return (s);
 }
 
-#define NCONN 1000
+static int *g_fds;
+static size_t *g_returns;
+static int *g_errors;
 
-int fds[NCONN];
-size_t returns[NCONN];
-int errors[NCONN];
+static int child(void);
 
 int
-main(int argc __unused, char **argv __unused)
+main(int argc, char **argv)
+{
+    int ch, i;
+
+    while ((ch = getopt(argc, argv, "B:c:Kl:p:s:S:U")) != -1) {
+	    switch (ch) {
+	    case 'B':
+		    g_bufsize = atoi(optarg);
+		    break;
+	    case 'c':
+		    g_children = atoi(optarg);
+		    break;
+	    case 'K':
+		    g_mode = WRITEVV_MODE_KERNEL;
+		    break;
+	    case 'l':
+		    g_loops = atoi(optarg);
+		    break;
+	    case 'p':
+		    g_port = atoi(optarg);
+		    break;
+	    case 's':
+		    g_sockcnt = atoi(optarg);
+		    break;
+	    case 'S':
+		    g_sockbufsize = atoi(optarg);
+		    break;
+	    case 'U':
+		    g_mode = WRITEVV_MODE_USER;
+		    break;
+	    }
+    }
+
+    g_buff = malloc(g_bufsize);
+    g_fds = malloc(sizeof(*g_fds) * g_sockcnt);
+    g_returns = malloc(sizeof(*g_returns) * g_sockcnt);
+    g_errors = malloc(sizeof(*g_errors) * g_sockcnt);
+    if (!g_buff || !g_fds || !g_returns || !g_errors)
+	    err(1, "malloc");
+    for (i = 0; i < g_children; i++) {
+	    pid_t pid = fork();
+	    if (pid == 0) {
+		    exit(child());
+	    } else if (pid == -1) {
+		    err(1, "fork");
+	    }
+    }
+    for (i = 0; i < g_children; i++) {
+	    int stat;
+	    wait(&stat);
+	    if (!WIFEXITED(stat) || WEXITSTATUS(stat) != 0)
+		    errx(1, "child error");
+    }
+    return 0;
+}
+
+
+int
+child(void)
 {
     int i, s;
     int error;
     struct iovec iovs[IOVCNT];
     size_t totvecbytes;
-    int opt;
 
-    for (i = 0; i < NCONN; i++) {
+    for (i = 0; i < g_sockcnt; i++) {
 	    s = make_conn();
-	    fds[i] = s;
+	    g_fds[i] = s;
     }
 
     totvecbytes = 0;
     for (i = 0; i < IOVCNT; i++) {
-	    iovs[i].iov_base = buff;
-	    iovs[i].iov_len = sizeof(buff);
-	    totvecbytes += sizeof(buff);
+	    iovs[i].iov_base = g_buff;
+	    iovs[i].iov_len = g_bufsize;
+	    totvecbytes += g_bufsize;
     }
 
-    //opt = WRITEVV_MODE_USER;
-    opt = WRITEVV_MODE_KERNEL;
-    writevv_control(WRITEVV_SETMODE, &opt);
+    writevv_control(WRITEVV_SETMODE, &g_mode);
 
-    for (i = 0; i < 10; i++) {
+    for (i = 0; i < g_loops; i++) {
 	int k;
 	fprintf(stderr, "looping... %d\n", i);
-	error = writevv(fds, NCONN, iovs, IOVCNT, returns, errors);
+	error = writevv(g_fds, g_sockcnt, iovs, IOVCNT, g_returns, g_errors);
 	if (error == -1)
 		err(1, "writevv");
-	for (k = 0; k < NCONN; k++) {
-		size_t r = returns[k];
+	for (k = 0; k < g_sockcnt; k++) {
+		size_t r = g_returns[k];
 		if (r != totvecbytes) {
-			fprintf(stderr, "failed: fd %d (index %d of %d) -> r = %zu, totvecbytes = %zu\n", fds[k], k, NCONN, r, totvecbytes);
+			fprintf(stderr, "failed: fd %d (index %d of %d) -> r = %zu, totvecbytes = %zu\n", g_fds[k], k, g_sockcnt, r, totvecbytes);
 			exit(1);
 		}
 	}

@@ -9,6 +9,7 @@
 
 #include <sys/types.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <netinet/in.h>
 #include <stdio.h>
 #include <err.h>
@@ -34,9 +35,11 @@ long long sunk_total, sunk_last_print;
 #define PRINT_PROGRESS (1024*1024*32)
 
 char buf[1024 * 1024 * 32];
+int g_childnum;
 
 void read_socket_cb(evutil_socket_t fd, short what, void *arg);
 void listen_socket_cb(evutil_socket_t fd, short what, void *arg);
+static int child(int s);
 
 void
 read_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
@@ -49,10 +52,7 @@ read_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
 	    int nr = error;
 	    sunk_total += nr;
 	    if (sunk_total - sunk_last_print >= PRINT_PROGRESS) {
-		    fprintf(stderr, "Sunk %lld bytes\n", sunk_total);
-		    /*while (sunk_last_print + PRINT_PROGRESS <= sunk_total) {
-			    sunk_last_print+= PRINT_PROGRESS;
-		    }*/
+		    fprintf(stderr, "Child %d: Sunk %lld bytes\n", g_childnum, sunk_total);
 		    sunk_last_print = sunk_total;
 	    }
     }
@@ -111,49 +111,40 @@ listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
     event_add(ev, NULL);
 }
 
+
 int
-main(int argc __unused, char **argv __unused)
+main(int argc, char **argv)
 {
-    struct event_config *cfg;
-    struct event_base *base;
-    //struct  protoent *protoent;
+    int ch;
+    int children = 1;
+    char *progname = argv[0];
     struct sockaddr_in my_addr;
-    struct cb_arg *new_arg;
-    struct event *ev;
     int opt;
 
     int s;
+    int i;
     int error;
+    int port = 9999;
 
-
-
-    cfg = event_config_new();
-    if (!cfg)
-	    errx(1, "event_config_new");
-    event_config_require_features(cfg, EV_FEATURE_ET);
-#if 0
-    /* I don't like select. */
-    event_config_avoid_method(cfg, "select");
-#endif
-
-    event_config_require_features(cfg, EV_FEATURE_ET);
-
-    base = event_base_new_with_config(cfg);
-    event_config_free(cfg);
-    if (!base)
-	    errx(1, "event_base_new_with_config");
-
-#if 0
-    protoent = getprotobyname("tcp");
-    if (!protoent)
-	    err(1, "getprotobyname tcp");
-#endif
-
+    while ((ch = getopt(argc, argv, "c:p:")) != -1) {
+	    switch (ch) {
+	    case 'c':
+		    children = atoi(optarg);
+		    break;
+	    case 'p':
+		    port = atoi(optarg);
+		    break;
+	    case '?':
+	    default:
+		    errx(1, "usage: %s [-c children] [-p listenport]",
+			progname);
+	    }
+    }
 
     e();
     s = socket(PF_INET, SOCK_STREAM, 0); //protoent->p_proto);
     my_addr.sin_family = AF_INET;
-    my_addr.sin_port = htons(9999);     // short, network byte order
+    my_addr.sin_port = htons(port);     // short, network byte order
     my_addr.sin_addr.s_addr = inet_addr("127.0.0.1");
     e();
     error = bind(s, (struct sockaddr *)&my_addr, sizeof(my_addr));
@@ -171,6 +162,41 @@ main(int argc __unused, char **argv __unused)
     error = listen(s, -1);
     if (error == -1)
 	    err(1, "listen");
+
+    for (i = 0; i < children; i++) {
+	    pid_t pid = fork();
+	    if (pid == 0) {
+		    g_childnum = i;
+		    exit(child(s));
+	    } else if (pid == -1) {
+		    err(1, "fork");
+	    }
+    }
+    for (i = 0; i < children; i++) {
+	    int status;
+	    wait(&status);
+    }
+}
+
+
+static int
+child(int s)
+{
+    struct event_config *cfg;
+    struct event_base *base;
+    //struct  protoent *protoent;
+    struct cb_arg *new_arg;
+    struct event *ev;
+
+    cfg = event_config_new();
+    if (!cfg)
+	    errx(1, "event_config_new");
+    event_config_require_features(cfg, EV_FEATURE_ET);
+
+    base = event_base_new_with_config(cfg);
+    event_config_free(cfg);
+    if (!base)
+	    errx(1, "event_base_new_with_config");
 
     e();
     new_arg = malloc(sizeof(*new_arg));
