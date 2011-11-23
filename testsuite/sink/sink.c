@@ -60,18 +60,34 @@ read_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
     if (error == -1) {
 	    e();
 	    if (errno == EAGAIN) {
-	    e();
+                    fprintf(stderr, "fd: %d EAGAIN!\n", fd);
+		    e();
+    			event_add(cb_arg->ev, NULL);
 		    return;
 	    }
 	    perror("read");
     }
 
     e();
+    fprintf(stderr, "closing fd %d\n", fd);
     close(fd);
+    fprintf(stderr, "done closing fd %d\n", fd);
     event_free(cb_arg->ev);
     free(cb_arg);
 }
 
+void nonblockit(int s);
+
+void
+nonblockit(int s)
+{
+    int oflags, error;
+
+    oflags = fcntl(s, F_GETFL, NULL);
+    error = fcntl(s, F_SETFL, oflags | O_NONBLOCK);
+    if (error == -1)
+	    err(1, "fcntl");
+}
 
 void
 listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
@@ -80,6 +96,7 @@ listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
     struct event_base *base;
     struct cb_arg *new_arg;
     struct event *ev;
+    int opt;
     int error;
     int newfd;
 
@@ -88,13 +105,18 @@ listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
 
     e();
     newfd = accept(fd, NULL, NULL);
-    if (newfd == -1)
+    if (newfd == -1) {
+	    if (errno == EAGAIN)
+		return;
 	    err(1, "accept");
+    }
+
 
     e();
-    error = fcntl(newfd, F_SETFL, O_NONBLOCK);
-    if (error == -1)
-	    err(1, "fcntl");
+    nonblockit(newfd);
+
+    opt = 1024*1024;
+    error = setsockopt(newfd, SOL_SOCKET, SO_RCVBUF, &opt, sizeof(opt));
 
     e();
     new_arg = malloc(sizeof(*new_arg));
@@ -163,6 +185,7 @@ main(int argc, char **argv)
     if (error == -1)
 	    err(1, "listen");
 
+    nonblockit(s);
     for (i = 0; i < children; i++) {
 	    pid_t pid = fork();
 	    if (pid == 0) {
@@ -191,7 +214,7 @@ child(int s)
     cfg = event_config_new();
     if (!cfg)
 	    errx(1, "event_config_new");
-    event_config_require_features(cfg, EV_FEATURE_ET);
+    //event_config_require_features(cfg, EV_FEATURE_ET);
 
     base = event_base_new_with_config(cfg);
     event_config_free(cfg);
