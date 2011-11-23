@@ -17,6 +17,7 @@
 #include <netdb.h>
 
 #include <arpa/inet.h>
+#include <netinet/tcp.h>
 
 #include "writevv.h"
 
@@ -57,8 +58,10 @@ make_conn(void)
     error = connect(s, (struct sockaddr *)&my_addr, sizeof(my_addr));
     if (error == -1)
 	    err(1, "connect");
-    opt = g_sockbufsize;
+    opt = g_sockbufsize * 8;
     setsockopt(s, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
+    opt = 1;
+    setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
     return (s);
 }
 
@@ -125,6 +128,7 @@ main(int argc, char **argv)
     return 0;
 }
 
+void do_exit(int ex);
 
 int
 child(void)
@@ -158,9 +162,20 @@ child(void)
 		size_t r = g_returns[k];
 		if (r != totvecbytes) {
 			fprintf(stderr, "failed: fd %d (index %d of %d) -> r = %zu, totvecbytes = %zu\n", g_fds[k], k, g_sockcnt, r, totvecbytes);
-			exit(1);
+			do_exit(1);
 		}
 	}
     }
-    exit(0);
+    do_exit(0);
+    return(0);
+}
+    
+void
+do_exit(int ex)
+{
+    int i;
+    for (i = 0; i < g_sockcnt; i++) {
+	    close(g_fds[i]);
+    }
+    exit(ex);
 }
