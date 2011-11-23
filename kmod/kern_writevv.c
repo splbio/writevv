@@ -78,6 +78,7 @@ struct sysent writevv_sysent = {
 static int writevv_syscall = NO_SYSCALL;
 
 static int writevv_debug = 0;
+static int writevv_calls = 0;
 
 struct sysent oldsysent;
 
@@ -90,6 +91,8 @@ SYSCALL_MODULE(writevv, &writevv_syscall, &writevv_sysent, NULL, NULL);
 SYSCTL_NODE(_debug, OID_AUTO, writevv, CTLFLAG_RD, 0, "writevv");
 SYSCTL_INT(_debug_writevv, OID_AUTO, debug, CTLFLAG_RW, &writevv_debug,
     0, "debug output level"); 
+SYSCTL_INT(_debug_writevv, OID_AUTO, calls, CTLFLAG_RW, &writevv_calls,
+    0, "calls"); 
 
 static void dbg(int level, const char *fmt, ...) __printflike(2, 3);
 
@@ -116,6 +119,8 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg)
     struct mbuf *m;
     int error;
 
+    writevv_calls++;
+	
     auio = NULL;
     m = NULL;
 
