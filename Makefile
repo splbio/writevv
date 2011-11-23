@@ -13,7 +13,7 @@ rootreload: tunekernel
 	kldload ./kmod/writevv.ko
 
 runsink:
-	./testsuite/sink/sink
+	./testsuite/sink/sink -c 10
 
 runtest:
 	./testsuite/writevvtest/writevvtest
