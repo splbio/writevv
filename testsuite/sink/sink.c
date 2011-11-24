@@ -17,6 +17,24 @@
 
 #include <arpa/inet.h>
 
+#ifndef SO_DISCARD_RECV
+#define SO_DISCARD_RECV	0x1016
+#endif
+
+int discard_it(int sock);
+
+int
+discard_it(int sock)
+{
+	int opt, error;
+
+	opt = 1;
+	error = setsockopt(sock, SOL_SOCKET, SO_DISCARD_RECV, &opt, sizeof opt);
+	if (error)
+		err(1, "setsockopt SO_DISCARD_RECV");
+	return error;
+}
+
 
 #if 0
 #define e()	do {fprintf(stderr, "%d\n", __LINE__); } while (0)
@@ -36,6 +54,7 @@ long long sunk_total, sunk_last_print;
 
 char buf[1024 * 1024 * 32];
 int g_childnum;
+int g_clientsocks;
 
 void read_socket_cb(evutil_socket_t fd, short what, void *arg);
 void listen_socket_cb(evutil_socket_t fd, short what, void *arg);
@@ -70,8 +89,9 @@ read_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
 
     e();
     fprintf(stderr, "closing fd %d\n", fd);
+    g_clientsocks--;
     close(fd);
-    fprintf(stderr, "done closing fd %d\n", fd);
+    fprintf(stderr, "done closing fd %d (of %d open)\n", fd, g_clientsocks);
     event_free(cb_arg->ev);
     free(cb_arg);
 }
@@ -111,6 +131,8 @@ listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
 	    err(1, "accept");
     }
 
+    g_clientsocks++;
+
 
     e();
     nonblockit(newfd);
@@ -126,6 +148,7 @@ listen_socket_cb(evutil_socket_t fd, short what __unused, void *arg)
     new_arg->desc = "Reading fd";
     e();
     ev = event_new(cb_arg->base, newfd, EV_READ|EV_PERSIST, read_socket_cb, new_arg);
+    discard_it(newfd);
     new_arg->ev = ev;
     if (ev == NULL)
 	    err(1, "event_new");
