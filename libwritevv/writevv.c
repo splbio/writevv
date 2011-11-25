@@ -16,52 +16,8 @@
 
 #define _LIBWRITEVV 1
 
+#include "syscallhelper.h"
 #include "writevv.h"
-
-
-
-static int
-getsyscallbyname(const char *syscallname, int *syscallnum)
-{
-	int error;
-	size_t numsize;
-	char *mibname;
-
-	numsize = sizeof(*syscallnum);
-
-	error = asprintf(&mibname, "kern.syscall.%s", syscallname);
-	if (error == -1)
-		return -1;
-	error = sysctlbyname(mibname, syscallnum, &numsize, NULL, 0);
-	free(mibname);
-	return (error);
-}
-
-#define NO_SYSCALL (-1)
-#define SYSCALLVAR int
-#define SYSCALLVAR_INITIALIZER	NO_SYSCALL
-
-static int
-initsyscallvar(const char *syscallname, SYSCALLVAR *syscallnum)
-{
-	int newsyscall, error;
-
-	if (*syscallnum == NO_SYSCALL) {
-		error = getsyscallbyname(syscallname, &newsyscall);
-		if (error == -1)
-			return error;
-		*syscallnum= newsyscall;
-	}
-	return 0;
-}
-
-static int
-getsyscallnum(SYSCALLVAR *syscallnum)
-{
-	
-	return *syscallnum;
-}
-	
 
 static SYSCALLVAR writevv_syscall = SYSCALLVAR_INITIALIZER;
 

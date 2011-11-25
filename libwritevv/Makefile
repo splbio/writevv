@@ -1,6 +1,8 @@
 # 
 LIB=	writevv
 SRCS=	writevv.c
+SRCS+=	syscallhelper.c
+SRCS+=	rcvsocknull.c
 
 INCS=	writevv.h
 
