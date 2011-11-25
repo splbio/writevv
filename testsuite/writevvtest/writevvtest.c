@@ -37,13 +37,66 @@ int g_bufsize = (((SOCK_BUF_SIZE / IOVCNT)/4) - 50);
 int g_loops = 10;
 int g_port = 9999;
 int g_sockcnt = 1000;
+int g_usetcp = 0;
 
 char *g_buff;
 
 int make_conn(void);
+int make_conn_tcp(void);
+int make_conn_socketpair(void);
 
 int
 make_conn(void)
+{
+    int error, opt, s;
+
+    if (g_usetcp) {
+	    s = make_conn_tcp();
+    } else {
+	    s = make_conn_socketpair();
+    }
+    opt = g_sockbufsize * 8;
+    error = setsockopt(s, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
+    if (error) {
+	    err(1, "setsockopt SO_SNDBUF %d", opt);
+    }
+    return s;
+}
+
+#ifndef SO_DISCARD_RECV
+#define SO_DISCARD_RECV	0x1016
+#endif
+
+int discard_it(int sock);
+
+int
+discard_it(int sock)
+{
+	int opt, error;
+
+	opt = 1;
+	error = setsockopt(sock, SOL_SOCKET, SO_DISCARD_RECV, &opt, sizeof opt);
+	if (error)
+		err(1, "setsockopt SO_DISCARD_RECV");
+	return error;
+}
+
+int
+make_conn_socketpair(void)
+{
+    int sp[2];
+    int error;
+
+    error = socketpair(AF_UNIX, SOCK_STREAM, 0, sp);
+    if (error)
+	    err(1, "socketpair");
+    discard_it(sp[1]);
+    discard_it(sp[0]);
+    return (sp[0]);
+}
+
+int
+make_conn_tcp(void)
 {
     struct sockaddr_in my_addr;
     int s, opt;
@@ -58,8 +111,6 @@ make_conn(void)
     error = connect(s, (struct sockaddr *)&my_addr, sizeof(my_addr));
     if (error == -1)
 	    err(1, "connect");
-    opt = g_sockbufsize * 8;
-    setsockopt(s, SOL_SOCKET, SO_SNDBUF, &opt, sizeof(opt));
     opt = 1;
     setsockopt(s, IPPROTO_TCP, TCP_NODELAY, &opt, sizeof(opt));
     return (s);
@@ -98,6 +149,9 @@ main(int argc, char **argv)
 		    break;
 	    case 'S':
 		    g_sockbufsize = atoi(optarg);
+		    break;
+	    case 't':
+		    g_usetcp = 1;
 		    break;
 	    case 'U':
 		    g_mode = WRITEVV_MODE_USER;
