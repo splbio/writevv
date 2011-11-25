@@ -298,6 +298,7 @@ writevv_internal_user(struct thread *td,
 		    returns[i] = td->td_retval[0];
 		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
+		    maybe_yield();
 	    }
 	    error = copyout(errors, user_errors + fdoffset,
 		toprocess * sizeof(*errors));
