@@ -24,5 +24,9 @@ runtest:
 tunekernel:
 	sudo sysctl kern.ipc.somaxconn=8192
 
+tarball:
+	make clean cleandepend
+	cd .. && tar -H -czvf bitgravity.tgz bitgravity
+
 .include <bsd.subdir.mk>
 
