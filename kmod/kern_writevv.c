@@ -82,13 +82,12 @@ static int writevv_calls = 0;
 
 struct sysent oldsysent;
 
-SYSCTL_NODE(_kern, OID_AUTO, syscall, CTLFLAG_RD, 0, "added syscalls");
-SYSCTL_INT(_kern_syscall, OID_AUTO, writevv, CTLFLAG_RD,
+SYSCTL_NODE(_debug, OID_AUTO, writevv, CTLFLAG_RD, 0, "writevv");
+SYSCTL_INT(_debug_writevv, OID_AUTO, syscall, CTLFLAG_RD,
     &writevv_syscall, NO_SYSCALL, "syscall number for writevv");
 
 SYSCALL_MODULE(writevv, &writevv_syscall, &writevv_sysent, NULL, NULL);
 
-SYSCTL_NODE(_debug, OID_AUTO, writevv, CTLFLAG_RD, 0, "writevv");
 SYSCTL_INT(_debug_writevv, OID_AUTO, debug, CTLFLAG_RW, &writevv_debug,
     0, "debug output level"); 
 SYSCTL_INT(_debug_writevv, OID_AUTO, calls, CTLFLAG_RW, &writevv_calls,

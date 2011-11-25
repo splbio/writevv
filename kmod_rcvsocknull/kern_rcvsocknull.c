@@ -74,8 +74,8 @@ struct sysent getrcvsocknull_sysent = {
 	.sy_call = (sy_call_t *)sys_getrcvsocknull,
 };
 static int getrcvsocknull_syscall = NO_SYSCALL;
-SYSCTL_NODE(_kern, OID_AUTO, syscall, CTLFLAG_RD, 0, "added syscalls");
-SYSCTL_INT(_kern_syscall, OID_AUTO, getrcvsocknull, CTLFLAG_RD,
+SYSCTL_NODE(_debug, OID_AUTO, getrcvsocknull, CTLFLAG_RD, 0, "added syscalls");
+SYSCTL_INT(_debug_getrcvsocknull, OID_AUTO, syscall, CTLFLAG_RD,
     &getrcvsocknull_syscall, NO_SYSCALL, "syscall number for getrcvsocknull");
 SYSCALL_MODULE(getrcvsocknull, &getrcvsocknull_syscall, &getrcvsocknull_sysent, NULL, NULL);
 
@@ -84,7 +84,8 @@ struct sysent setrcvsocknull_sysent = {
 	.sy_call = (sy_call_t *)sys_setrcvsocknull,
 };
 static int setrcvsocknull_syscall = NO_SYSCALL;
-SYSCTL_INT(_kern_syscall, OID_AUTO, setrcvsocknull, CTLFLAG_RD,
+SYSCTL_NODE(_debug, OID_AUTO, setrcvsocknull, CTLFLAG_RD, 0, "added syscalls");
+SYSCTL_INT(_debug_setrcvsocknull, OID_AUTO, syscall, CTLFLAG_RD,
     &setrcvsocknull_syscall, NO_SYSCALL, "syscall number for setrcvsocknull");
 SYSCALL_MODULE(setrcvsocknull, &setrcvsocknull_syscall, &setrcvsocknull_sysent, NULL, NULL);
 

@@ -15,7 +15,7 @@ getsyscallbyname(const char *syscallname, int *syscallnum)
 
 	numsize = sizeof(*syscallnum);
 
-	error = asprintf(&mibname, "kern.syscall.%s", syscallname);
+	error = asprintf(&mibname, "debug.%s.syscall", syscallname);
 	if (error == -1)
 		return -1;
 	error = sysctlbyname(mibname, syscallnum, &numsize, NULL, 0);
