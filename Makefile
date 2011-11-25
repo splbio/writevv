@@ -3,6 +3,7 @@
 
 SUBDIR = libwritevv \
 	kmod \
+	kmod_rcvsocknull \
 	testsuite 
 
 reload:
