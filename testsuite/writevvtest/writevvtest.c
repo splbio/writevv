@@ -20,6 +20,7 @@
 #include <netinet/tcp.h>
 
 #include "writevv.h"
+#include "rcvsocknull.h"
 
 
 #if 0
@@ -63,10 +64,6 @@ make_conn(void)
     return s;
 }
 
-#ifndef SO_DISCARD_RECV
-#define SO_DISCARD_RECV	0x1016
-#endif
-
 int discard_it(int sock);
 
 int
@@ -75,9 +72,9 @@ discard_it(int sock)
 	int opt, error;
 
 	opt = 1;
-	error = setsockopt(sock, SOL_SOCKET, SO_DISCARD_RECV, &opt, sizeof opt);
+	error = setrcvsocknull(sock, 1);
 	if (error)
-		err(1, "setsockopt SO_DISCARD_RECV");
+		err(1, "setrcvsocknull");
 	return error;
 }
 
