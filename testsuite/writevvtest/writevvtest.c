@@ -117,6 +117,8 @@ static int *g_fds;
 static size_t *g_returns;
 static int *g_errors;
 
+static int g_verbose;
+
 static int child(void);
 
 int
@@ -124,7 +126,7 @@ main(int argc, char **argv)
 {
     int ch, i;
 
-    while ((ch = getopt(argc, argv, "B:c:Kl:p:s:S:U")) != -1) {
+    while ((ch = getopt(argc, argv, "B:c:Kl:p:s:S:Uv")) != -1) {
 	    switch (ch) {
 	    case 'B':
 		    g_bufsize = atoi(optarg);
@@ -153,6 +155,12 @@ main(int argc, char **argv)
 	    case 'U':
 		    g_mode = WRITEVV_MODE_USER;
 		    break;
+	    case 'v':
+		    g_verbose = 1;
+		    break;
+	    case '?':
+	    default:
+		    errx(1, "usage.\n");
 	    }
     }
 
@@ -205,7 +213,8 @@ child(void)
 
     for (i = 0; i < g_loops; i++) {
 	int k;
-	fprintf(stderr, "looping... %d\n", i);
+	if (g_verbose)
+		fprintf(stderr, "looping... %d\n", i);
 	error = writevv(g_fds, g_sockcnt, iovs, IOVCNT, g_returns, g_errors);
 	if (error == -1)
 		err(1, "writevv");
