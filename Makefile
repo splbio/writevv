@@ -11,6 +11,8 @@ reload:
 rootreload: tunekernel
 	-kldunload writevv
 	kldload ./kmod/writevv.ko
+	-kldunload rcvsocknull
+	kldload ./kmod_rcvsocknull/rcvsocknull.ko
 
 runsink:
 	./testsuite/sink/sink -c 10
