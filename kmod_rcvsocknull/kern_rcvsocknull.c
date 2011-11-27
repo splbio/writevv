@@ -160,6 +160,7 @@ sys_setrcvsocknull(struct thread *td, struct kern_setrcvsocknull_args *karg)
 		    error = EBUSY;
 	    } else {
 		    soupcall_set(so, SO_RCV, &so_discard_rcv, NULL);
+		    (void)so_discard_rcv(so, NULL, M_NOWAIT);
 	    }
     } else if (arg.onoff == 0) {
 	    if (sb->sb_upcall == so_discard_rcv)
