@@ -24,9 +24,12 @@ runtest:
 tunekernel:
 	sudo sysctl kern.ipc.somaxconn=8192
 
+GITVER!=git log --pretty=format:'%h' -n 1
+TARBALL=bitgravity-${GITVER}.tgz
+
 tarball:
 	$(MAKE) clean cleandepend
-	cd .. && tar -H -czvf bitgravity.tgz bitgravity && echo `pwd`
+	cd .. && tar -H -czvf ${TARBALL} bitgravity && realpath ${TARBALL}
 
 .include <bsd.subdir.mk>
 
