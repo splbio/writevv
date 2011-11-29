@@ -295,6 +295,13 @@ out:
  */
 #define BATCH_SIZE  128
 
+#if __FreeBSD_version < 802513
+#define maybe_yield() do { \
+	if (ticks - PCPU_GET(switchticks) >= hogticks) \
+		uio_yield();\
+} while (0)
+#endif
+
 static int
 writevv_internal_user(struct thread *td,
     const int *user_fds, int fdcnt, struct uio *auio,
@@ -320,9 +327,7 @@ writevv_internal_user(struct thread *td,
 		    returns[i] = td->td_retval[0];
 		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
-#if __FreeBSD_version >= 802513
 		    maybe_yield();
-#endif
 	    }
 	    error = copyout(errors, user_errors + fdoffset,
 		toprocess * sizeof(*errors));
