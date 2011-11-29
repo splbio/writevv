@@ -1,4 +1,3 @@
-#include <event2/event.h>
 
 #include <sys/types.h>
 #include <sys/uio.h>

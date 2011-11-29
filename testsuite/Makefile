@@ -1,7 +1,7 @@
 
 .include <bsd.own.mk>
 
-SUBDIR = sink writevvtest
+SUBDIR = writevvtest
 
 .include <bsd.subdir.mk>
 

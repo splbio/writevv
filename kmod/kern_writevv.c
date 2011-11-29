@@ -44,7 +44,9 @@ __FBSDID("$FreeBSD$");
 #include <sys/file.h>
 #include <sys/filio.h>
 
+#if __FreeBSD_version > 900000
 #include <sys/capability.h>
+#endif
 #include <sys/syscallsubr.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -60,6 +62,15 @@ __FBSDID("$FreeBSD$");
 
 
 #include "writevv.h"
+
+#ifndef CURVNET_SET
+#define CURVNET_SET(x)
+#define CURVNET_RESTORE()
+#endif
+
+#ifndef SBL_WAIT
+#define SBL_WAIT M_WAITOK
+#endif
 
 
 struct kern_writevv_args {
@@ -129,8 +140,7 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg)
             dbg(1, "copyin() failed: %d\n", error);
 	    return error;
     }
-
-    error = copyinuio(arg.iov, arg.iovcnt, &auio);
+    error = copyinuio(__DECONST(struct iovec *, arg.iov), arg.iovcnt, &auio);
     if (error) {
             dbg(1, "copyinuio() failed: %d\n", error);
 	    return error;
@@ -140,7 +150,12 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg)
     auio->uio_offset = (off_t)-1;
     /* m_uiotombuf consumes the uio and iovs, so pass a temp copy */
     temp_uio = cloneuio(auio);
+
+#if __FreeBSD_version >= 801000
     m = m_uiotombuf(temp_uio, M_WAIT, 0, 0, 0);
+#else
+    m = m_uiotombuf(temp_uio, M_WAIT, 0, 0);
+#endif
     free(temp_uio, M_IOV);
     if (m == NULL) {
             dbg(1, "m_uiotombuf() failed NULL\n");
@@ -172,7 +187,11 @@ writevv_kernel(struct thread *td, int fd, struct uio *uio,
 	m2 = NULL;
 
 	/* refcount the struct file. */
+#if __FreeBSD_version > 900000
 	error = fget_write(td, fd, CAP_WRITE | CAP_SEEK, &fp);
+#else
+	error = fget_write(td, fd, &fp);
+#endif
 	if (error)
 		return error;
 
@@ -252,7 +271,11 @@ retry_space:
 	CURVNET_RESTORE();
 	if (error == EPIPE && (so->so_options & SO_NOSIGPIPE) == 0) {
 		PROC_LOCK(uio->uio_td->td_proc);
+#if __FreeBSD_version > 900000
 		tdsignal(uio->uio_td, SIGPIPE);
+#else
+		psignal(uio->uio_td->td_proc, SIGPIPE);
+#endif
 		PROC_UNLOCK(uio->uio_td->td_proc);
 	}
 out:
@@ -297,7 +320,9 @@ writevv_internal_user(struct thread *td,
 		    returns[i] = td->td_retval[0];
 		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
+#if __FreeBSD_version > 900000
 		    maybe_yield();
+#endif
 	    }
 	    error = copyout(errors, user_errors + fdoffset,
 		toprocess * sizeof(*errors));

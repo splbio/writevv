@@ -44,7 +44,11 @@ __FBSDID("$FreeBSD$");
 #include <sys/file.h>
 #include <sys/filio.h>
 
+
+#if __FreeBSD_version > 900000
 #include <sys/capability.h>
+#endif
+
 #include <sys/syscallsubr.h>
 #include <sys/lock.h>
 #include <sys/mutex.h>
@@ -144,7 +148,11 @@ sys_setrcvsocknull(struct thread *td, struct kern_setrcvsocknull_args *karg)
 	    return error;
     }
 
+#if __FreeBSD_version > 900000
     error = fget(td, arg.fd, CAP_SETSOCKOPT, &fp);
+#else
+    error = fget(td, arg.fd, &fp);
+#endif
     if (error)
 	    return (error);
 
@@ -194,7 +202,11 @@ sys_getrcvsocknull(struct thread *td, struct kern_getrcvsocknull_args *karg)
 	    return error;
     }
 
+#if __FreeBSD_version > 900000
     error = fget(td, arg.fd, CAP_GETSOCKOPT, &fp);
+#else
+    error = fget(td, arg.fd, &fp);
+#endif
     if (error)
 	    return (error);
 
