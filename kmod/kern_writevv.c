@@ -320,7 +320,7 @@ writevv_internal_user(struct thread *td,
 		    returns[i] = td->td_retval[0];
 		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
-#if __FreeBSD_version > 900000
+#if __FreeBSD_version > 800000
 		    maybe_yield();
 #endif
 	    }
