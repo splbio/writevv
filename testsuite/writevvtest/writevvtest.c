@@ -28,7 +28,7 @@
 #define e()	do { ; }while(0)
 #endif
 
-#define SOCK_BUF_SIZE (64*1024)
+#define SOCK_BUF_SIZE (16*1024)
 #define IOVCNT	4
 static int g_mode = WRITEVV_MODE_KERNEL;
 int g_children = 1;
