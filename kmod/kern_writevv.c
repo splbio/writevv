@@ -266,8 +266,14 @@ retry_space:
 	CURVNET_SET(so->so_vnet);
 	error = (*so->so_proto->pr_usrreqs->pru_send)
 	    (so, 0, m2, NULL, NULL, td);
-	m2 = NULL; /* it's consumed by the pru_send routine */
-	td->td_retval[0] = uio->uio_resid;
+	/*
+	 * m2 is consumed by the pru_send routine,
+	 * so prevent a double m_freem() below
+	 * by setting to NULL.
+	 */
+	m2 = NULL;
+	if (!error)
+		td->td_retval[0] = uio->uio_resid;
 	CURVNET_RESTORE();
 	if (error == EPIPE && (so->so_options & SO_NOSIGPIPE) == 0) {
 		PROC_LOCK(uio->uio_td->td_proc);
@@ -323,8 +329,13 @@ writevv_internal_user(struct thread *td,
 	    if (error)
 		    goto out;
 	    for (i = 0; i < toprocess; i++) {
-		    error = errors[i] = writevv_kernel(td, fds[i], auio, m);
-		    returns[i] = td->td_retval[0];
+		    errors[i] = writevv_kernel(td, fds[i], auio, m);
+		    if (errors[i] == 0) {
+			    returns[i] = td->td_retval[0];
+		    } else {
+			    returns[i] = -1;
+		    }
+		    td->td_retval[0] = 0; /* prevent later pollution */
 		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
 		    maybe_yield();
