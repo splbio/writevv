@@ -1,0 +1,115 @@
+.\" Copyright (c) 2011 Research Engineering Development, Inc.
+.\" Author: Alfred Perlstein <alfred@FreeBSD.org>
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHOR AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHOR OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.Dd December 21, 2011
+.Dt WRITEVV 2
+.Os
+.Sh NAME
+.Nm writevv
+.Nd write output
+.Sh LIBRARY
+.Lb libwritevv
+.Sh SYNOPSIS
+.In sys/types.h
+.In sys/uio.h
+.In unistd.h
+.In writevv.h
+.Ft int
+.Fn writevv "const int *fds" "int fdcnt" "const struct iovec *iov" "int iovcnt" "size_t *returns" "int *errors"
+.Sh DESCRIPTION
+A highly optimized syscall to zero-copy broadcast the same data to multiple
+socket filedescriptors.
+.Pp
+The
+.Fn writevv
+system call
+attempts to write the iovec
+.Fa iov
+to the objects referenced by the descriptor array
+.Fa fds
+of length
+.Fa fdcnt .
+.Pp
+The effect is intended to be identical to calling
+.Xr writev 2
+on each descriptor in turn.
+The return values and errno values from each writev call are returned
+in the
+.Fa returns
+and
+.Fa errors
+arrays respectively mapped.
+.Sh SPECIAL OPTIMIZATIONS
+When used on sockets, the data referenced by
+.Fa iov
+is copied a single time into the kernel memory and then shallow copies
+of the data are made for each send.
+.Pp
+entry specifies the base address and length of an area
+in memory from which data should be written.
+.Sh RETURN VALUES
+The writevv call will return the number of successful
+.Xr writev 2
+calls performed in which the
+.Em entirety
+of the data to written was successfully output.  A partial write will not
+count towards the total number of successful writes.
+.Pp
+Most errors from
+.Xr writev 2
+will
+.Em NOT
+be returned, instead the the
+.Fa errors
+array should be consulted.
+.Pp
+A return value of -1 indicates a higher level error in the call.
+See the ERRORS section for details.
+.Sh ERRORS
+The
+.Fn writevv
+system calls
+will fail if:
+.Bl -tag -width Er
+.It Bq Er EFAULT
+Part of
+.Fa iov
+or data to be written to the file
+points outside the process's allocated address space.
+.It Bq Er EINVAL
+The total size of
+.Fa iov
+is greater than
+.Dv INT_MAX
+bytes, or the value
+.Fa iovcnt
+exceeds
+.Dv UIO_MAXIOV .
+.Sh SEE ALSO
+.Xr writev 2
+.Sh AUTHORS
+The writevv system call and this manual page were written by
+.An Alfred Perlstein
+.Aq alfred@freebsd.org .
