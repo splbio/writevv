@@ -4,7 +4,8 @@
 SUBDIR = libwritevv \
 	kmod \
 	kmod_rcvsocknull \
-	testsuite 
+	testsuite \
+	man
 
 reload:
 	sudo $(MAKE) $(MAKEFLAGS) rootreload
@@ -19,7 +20,10 @@ runsink:
 	./testsuite/sink/sink -c 10
 
 runtest:
-	./testsuite/writevvtest/writevvtest
+	@echo "running user test..."
+	time ./testsuite/writevvtest/writevvtest -U
+	@echo "running kernel test..."
+	time ./testsuite/writevvtest/writevvtest
 
 tunekernel:
 	sudo sysctl kern.ipc.somaxconn=8192

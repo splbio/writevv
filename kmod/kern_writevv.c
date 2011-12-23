@@ -63,6 +63,7 @@ __FBSDID("$FreeBSD$");
 
 #include "writevv.h"
 
+/* Begin forward FreeBSD compat for 9.x/10.x */
 #ifndef CURVNET_SET
 #define CURVNET_SET(x)
 #define CURVNET_RESTORE()
@@ -71,6 +72,7 @@ __FBSDID("$FreeBSD$");
 #ifndef SBL_WAIT
 #define SBL_WAIT M_WAITOK
 #endif
+/* End forward compat */
 
 
 struct kern_writevv_args {
@@ -140,17 +142,18 @@ sys_writevv(struct thread *td, struct kern_writevv_args *karg)
             dbg(1, "copyin() failed: %d\n", error);
 	    return error;
     }
+    /* bring in the user's iovec as a uio */
     error = copyinuio(__DECONST(struct iovec *, arg.iov), arg.iovcnt, &auio);
     if (error) {
             dbg(1, "copyinuio() failed: %d\n", error);
 	    return error;
     }
+    /* make a deep mbuf copy of the uio */
     auio->uio_rw = UIO_WRITE;
     auio->uio_td = td;
     auio->uio_offset = (off_t)-1;
     /* m_uiotombuf consumes the uio and iovs, so pass a temp copy */
     temp_uio = cloneuio(auio);
-
 #if __FreeBSD_version >= 801000
     m = m_uiotombuf(temp_uio, M_WAIT, 0, 0, 0);
 #else
@@ -171,6 +174,20 @@ out:
     return (error);
 }
 
+/*
+ * Write data to fd 'fd'.
+ * If the 'fd' references a socket, then pass a copy of the mbuf chain 'm'
+ * into the socket's pru_send routine.
+ * If the 'fd' references a non-socket, fallback to kern_writev() to push
+ * the data.
+ *
+ * NOTE: the mbuf and uio are NOT consumed by this call, they are shallow
+ * copied internally by m_copym() and cloneuio() respectively.
+ * and can be reused for further calls.
+ *
+ * NOTE: 'uio's uio->resid will not be updated!
+ * To see the number of bytes written consult td->td_retval[0].
+ */
 static int
 writevv_kernel(struct thread *td, int fd, struct uio *uio,
     struct mbuf *m)
@@ -293,14 +310,6 @@ out:
 	return (error);
 }
 
-
-/* this is on the stack so don't make it too high otherwise we'll
- * blow out the kernel stack and crash in very hard to track down
- * ways.
- * at 128 we're already eating 128 * sizeof(int) * 3 bytes of stack!
- */
-#define BATCH_SIZE  128
-
 #if __FreeBSD_version < 802513
 #define maybe_yield() do { \
 	if (ticks - PCPU_GET(switchticks) >= hogticks) \
@@ -308,6 +317,25 @@ out:
 } while (0)
 #endif
 
+/*
+ * Write the data in m/auio to the array of fds specified by
+ * 'user_fds' (a usermode address).
+ * Write the return values and errno values back from the write operations
+ * to the usermode arrays 'user_returns' and 'user_errors' respectively.
+ *
+ * Set td->td_retval[0] to the number of COMPLETE successful writes or
+ * return an error if we hit some issue such as invalid fd or bad address.
+ * A partial write will not count as a 'successful' write.
+ *
+ * We use the define BATCH_SIZE to copyin/copyout in batches for
+ * user address manipulations.
+ * NOTE: BATCH_SIZE is on the stack so don't make it too high otherwise we'll
+ * blow out the kernel stack and crash in very hard to track down
+ * ways.
+ * At a BATCH_SIZE of 128 we're already eating 128 * sizeof(int) * 3 bytes of
+ * stack!
+ */
+#define BATCH_SIZE  128
 static int
 writevv_internal_user(struct thread *td,
     const int *user_fds, int fdcnt, struct uio *auio,
@@ -318,24 +346,47 @@ writevv_internal_user(struct thread *td,
     int fds[BATCH_SIZE];
     int errors[BATCH_SIZE];
     size_t returns[BATCH_SIZE];
-    int i;
+    int i, fullwrites;
+    size_t bytestowrite;
 
     fdoffset = 0;
     error = 0;
+    fullwrites = 0;
+    bytestowrite = auio->uio_resid;
 
+    /* iterate over the enter array of user fds in BATCH_SIZE batches. */
     while (fdoffset < fdcnt) {
 	    toprocess = min(BATCH_SIZE, fdcnt - fdoffset);
 	    error = copyin(user_fds + fdoffset, fds, toprocess * sizeof(*fds));
 	    if (error)
 		    goto out;
+	    /* process the current batch */
 	    for (i = 0; i < toprocess; i++) {
 		    errors[i] = writevv_kernel(td, fds[i], auio, m);
 		    if (errors[i] == 0) {
+			    /*
+			     * no error, copy the amount of written data
+			     * to the return value array.
+			     */
 			    returns[i] = td->td_retval[0];
+			    /*
+			     * if we had a successful write of the entire data
+			     * amount then update the fullwrite count.
+			     */
+			    if (returns[i] == bytestowrite)
+				    fullwrites++;
 		    } else {
+			    /*
+			     * we had an error so return -1,
+			     * errors[i] is already set.
+			     */
 			    returns[i] = -1;
 		    }
-		    td->td_retval[0] = 0; /* prevent later pollution */
+		    /*
+		     * clear td->td_retval to prevent leakage between write
+		     * calls.
+		     */
+		    td->td_retval[0] = 0;
 		    dbg(3, "writevv_kernel: data sent: %lu\n",
 			(unsigned long)returns[i]);
 		    maybe_yield();
@@ -343,20 +394,25 @@ writevv_internal_user(struct thread *td,
 	    error = copyout(errors, user_errors + fdoffset,
 		toprocess * sizeof(*errors));
 	    if (error) {
-                    dbg(1, "writevv_internal_user: copyout failed (errors). uaddr %p, len %d, error %d\n",
+                    dbg(1, "writevv_internal_user: copyout failed (errors)."
+			" uaddr %p, len %d, error %d\n",
                         user_errors, (int)(toprocess * sizeof(*errors)), error);
 		    goto out;
             }
 	    error = copyout(returns, user_returns + fdoffset,
 		toprocess * sizeof(*returns));
 	    if (error) {
-                    dbg(1, "writevv_internal_user: copyout failed (returns). uaddr %p, len %d, error %d\n",
-                        user_returns, (int)(toprocess * sizeof(*returns)), error);
+                    dbg(1, "writevv_internal_user: copyout failed (returns)."
+			" uaddr %p, len %d, error %d\n",
+                        user_returns, (int)(toprocess * sizeof(*returns)),
+			error);
 		    goto out;
             }
 	    fdoffset += BATCH_SIZE;
     }
 out:
     dbg(1, "writevv_internal_user: error: %d\n", error);
+    if (!error)
+	td->td_retval[0] = fullwrites;
     return (error);
 }

@@ -84,11 +84,28 @@ writevv_userland(const int *fds, int fdcnt, const struct iovec *iov, int iovcnt,
     size_t *returns, int *errors)
 {
 	int i, error;
+	int totok;
+	size_t towrite = 0;
+
+	totok = 0;
+
+	for (i = 0; i < iovcnt; i++)
+		towrite += iov[i].iov_len;
 
 	for (i = 0; i < fdcnt; i++) {
 		error = writev(fds[i], iov, iovcnt);
-		returns[i] = error;
-		errors[i] = (error == -1) ? errno : 0;
+		if (error == -1 && errno == EFAULT) {
+			return -1;
+		}
+		if (error == -1) {
+			returns[i] = error;
+			errors[i] = errno;
+		} else {
+			returns[i] = error;
+			errors[i] = 0;
+			if (returns[i] == towrite)
+				totok++;
+		}
 	}
-	return 0;
+	return totok;
 }
